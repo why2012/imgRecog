@@ -385,65 +385,136 @@ def getSkewScale(topLeft, topRight, bottomRight, bottomLeft):
 	A = B = 0
 	return [[A, C], [A, D], [B, D], [B, C]]
 
-def determineBoxRatio(c1, c2, c3, c4, w, h, thresh = 0.1):
-	w = float(w)
-	h = float(h)
-	c1 = np.array(c1)
-	c2 = np.array(c2)
-	c3 = np.array(c3)
-	c4 = np.array(c4)
-	c = [c1, c2, c3, c4]
-	len1 = np.sum(c1 * c1)
-	len2 = np.sum(c2 * c2)
-	len3 = np.sum(c3 * c3)
-	len4 = np.sum(c4 * c4)
-	lenTotal = [len1, len2, len3, len4]
-	minLenIndex = np.argmin(lenTotal)
-	maxLenIndex = np.argmax(lenTotal)
-	leftIndex = [0, 1, 2, 3]
-	for i in leftIndex:
-		if i == minLenIndex or i == maxLenIndex:
-			leftIndex.remove(i)
-	cLeft1 = c[leftIndex[0]]
-	cLeft2 = c[leftIndex[1]]
-	if cLeft1[1] > cLeft2[1]:
-		cLeft1, cLeft2 = (cLeft2, cLeft1)
-	topLeft = np.array((c[minLenIndex][0], c[minLenIndex][1]))
-	topRight = np.array((cLeft1[0], cLeft1[1]))
-	bottomRight = np.array((c[maxLenIndex][0], c[maxLenIndex][1]))
-	bottomLeft = np.array((cLeft2[0], cLeft2[1]))
+def determineBoxRatio(c1, c2, c3, c4, whRatio, thresh = 0.1):
+	# c1 = np.array(c1)
+	# c2 = np.array(c2)
+	# c3 = np.array(c3)
+	# c4 = np.array(c4)
+	# c = [c1, c2, c3, c4]
+	# # 四个圆心距原点距离
+	# len1 = np.sum(c1 * c1)
+	# len2 = np.sum(c2 * c2)
+	# len3 = np.sum(c3 * c3)
+	# len4 = np.sum(c4 * c4)
+	# lenTotal = [len1, len2, len3, len4]
+	# # 最小和最大距离分别为左上点和右下点
+	# minLenIndex = np.argmin(lenTotal)
+	# maxLenIndex = np.argmax(lenTotal)
+	# leftIndex = [0, 1, 2, 3]
+	# leftIndex.remove(minLenIndex)
+	# leftIndex.remove(maxLenIndex)
+	# cLeft1 = c[leftIndex[0]]
+	# cLeft2 = c[leftIndex[1]]
+	# # 剩下两个点，y坐标大的为左下点
+	# if cLeft1[1] > cLeft2[1]:
+	# 	cLeft1, cLeft2 = (cLeft2, cLeft1)
+	# topLeft = np.array((c[minLenIndex][0], c[minLenIndex][1]))
+	# topRight = np.array((cLeft1[0], cLeft1[1]))
+	# bottomRight = np.array((c[maxLenIndex][0], c[maxLenIndex][1]))
+	# bottomLeft = np.array((cLeft2[0], cLeft2[1]))
+	topLeft = np.array([c1[0], c1[1]])
+	topRight = np.array([c2[0], c2[1]])
+	bottomRight = np.array([c3[0], c3[1]])
+	bottomLeft = np.array([c4[0], c4[1]])
+	# 上下，左右，宽高
 	w1 = np.sqrt(np.sum((topRight - topLeft) * (topRight - topLeft)))
 	w2 = np.sqrt(np.sum((bottomRight - bottomLeft) * (bottomRight - bottomLeft)))
 	h1 = np.sqrt(np.sum((bottomLeft - topLeft) * (bottomLeft - topLeft)))
 	h2 = np.sqrt(np.sum((bottomRight - topRight) * (bottomRight - topRight)))
-	staRatio = w / h
+	# 宽高比
+	staRatio = whRatio
 	ratio1 = w1 / h1
 	ratio2 = w2 / h2
-	if (ratio1 >= staRatio - thresh and ratio1 <= staRatio + thresh) and (ratio2 >= staRatio - thresh and ratio2 <= staRatio + thresh):
+	ratio3 = w1 / h2
+	ratio4 = w2 / h1
+	# diagLength = w * w + h * h
+	diagLength1 = np.sum((topLeft - bottomRight) * (topLeft - bottomRight))
+	diagLength2 = np.sum((topRight - bottomLeft) * (topRight - bottomLeft))
+	# 宽高比判定
+	whRatioBool = (ratio1 >= staRatio - thresh and ratio1 <= staRatio + thresh) and (ratio2 >= staRatio - thresh and ratio2 <= staRatio + thresh) \
+				and (ratio3 >= staRatio - thresh and ratio3 <= staRatio + thresh) and (ratio4 >= staRatio - thresh and ratio4 <= staRatio + thresh)
+	# 对角线绝对长度
+	# diagAbsoluteLengthBool = (diagLength1 >= diagLength * (1 - thresh) and diagLength1 <= diagLength * (1 + thresh)) and (diagLength2 >= diagLength * (1 - thresh) and diagLength2 <= diagLength * (1 + thresh))
+	# 对角线相对长度
+	diagLengthRatio = diagLength1 / diagLength2
+	diagLengthRatioBool = (diagLengthRatio >= 1 - thresh) and (diagLengthRatio <= 1 + thresh)
+
+	if diagLengthRatioBool:
+		print c1,c2,c3,c4
+		print "   topLeft,    topRight: ", [topLeft.tolist(), topRight.tolist()]
+		print "bottomLeft, bottomRight: ", [bottomLeft.tolist(), bottomRight.tolist()]
+		print "w1, w2: ", [w1, w2]
+		print "h1, h2: ", [h1, h2]
+		print "staRatio: ", staRatio
+		print "ratio1(w1/h1), ratio2(w2/h2), ratio3(w1/h2), ratio4(w2/h1): ", [ratio1, ratio2, ratio3, ratio4]
+		print "ratioBool: ", whRatioBool
+		# print "diagLength: ", diagLength
+		print "diagLength1, diagLength2, diagLengthRatio", [diagLength1, diagLength2, diagLengthRatio]
+		print "diagLengthRatioBool: ", diagLengthRatioBool
+		print "----------"
+
+	# 宽高比与对角线长度
+	if whRatioBool and diagLengthRatioBool:
 		return True, (topLeft, topRight, bottomRight, bottomLeft), getSkewScale(topLeft, topRight, bottomRight, bottomLeft)
 	else:
 		return False, (), []
 
-def determingCorrectCircles(circles, w, h):
+def determingCorrectCircles(circles, whRatio):
 	if len(circles) < 4:
 		return []
-	for currentCircleIndex, currentCircle in enumerate(circles):
-		leftCircles = circles[range(currentCircleIndex + 1, len(circles))].tolist();
-		leftCircles.extend(circles[range(0, currentCircleIndex)])
-		c1 = currentCircle
-		for windowIndex in range(len(leftCircles)):
-			c2, c3, c4 = getSlideWindow(leftCircles, windowIndex, 3)
-			result, corners, skewScale = determineBoxRatio((c1[0], c1[1]), (c2[0], c2[1]), (c3[0], c3[1]), (c4[0], c4[1]), w, h)
-			if result:
-				return corners, (c1, c2, c3, c4), skewScale
+	# for currentCircleIndex, currentCircle in enumerate(circles):
+	# 	leftCircles = circles[range(currentCircleIndex + 1, len(circles))].tolist();
+	# 	leftCircles.extend(circles[range(0, currentCircleIndex)])
+	# 	c1 = currentCircle
+	# 	for windowIndex in range(len(leftCircles)):
+	# 		c2, c3, c4 = getSlideWindow(leftCircles, windowIndex, 3)
+	# 		result, corners, skewScale = determineBoxRatio((c1[0], c1[1]), (c2[0], c2[1]), (c3[0], c3[1]), (c4[0], c4[1]), whRatio)
+	# 		if result:
+	# 			return corners, (c1, c2, c3, c4), skewScale
+	# return [], (), []
+	# 分别获取四个象限的点
+	topLeftCircles = []
+	topRightCircles = []
+	bottomLeftCircles = []
+	bottomRightCircles = []
+	minX = np.min(circles[:, 0])
+	maxX = np.max(circles[:, 0])
+	minY = np.min(circles[:, 1])
+	maxY = np.max(circles[:, 1])
+	centerX = (minX + maxX) / 2.0
+	centerY = (minY + maxY) / 2.0
+	for curCircle in circles:
+		x, y, r = curCircle
+		if x <= centerX and y <= centerY:
+			topLeftCircles.append(curCircle)
+		elif x >= centerX and y <= centerY:
+			topRightCircles.append(curCircle)
+		elif x >= centerX and y >= centerY:
+			bottomRightCircles.append(curCircle)
+		else:
+			bottomLeftCircles.append(curCircle)
+	# print topLeftCircles
+	# print topRightCircles
+	# print bottomRightCircles
+	# print bottomLeftCircles
+	for circleTopLeft in topLeftCircles:
+		for circleTopRight in topRightCircles:
+			for circleBottomRight in bottomRightCircles:
+				for circleBottomLeft in bottomLeftCircles:
+					result, corners, skewScale = determineBoxRatio(circleTopLeft, circleTopRight, circleBottomRight, circleBottomLeft, whRatio)
+					if result:
+						return corners, (circleTopLeft, circleTopRight, circleBottomRight, circleBottomLeft), skewScale
 	return [], (), []
 
-# main function, paperW,paperH: 目标区域宽高, blockList = [(0.3,0.3,0.5,0.5), ]左上右下
+
+# main function, paperW,paperH: 目标区域宽高(相对比例), blockList = [(0.3,0.3,0.5,0.5), ]左上右下
 def houghTestCircle(originalImg, paperW, paperH, blockList = None, scaleThresh = 0.3):
 	imgSize = getImgSize(originalImg)
 	w, h = imgSize
 	# 按比例缩放
 	w, h = (np.int(w * scaleThresh), np.int(h * scaleThresh))
+	papersw, papersh = (np.float(paperW * scaleThresh), np.float(paperH * scaleThresh))# (w * paperW, h * paperH)
+	# 调试
 	dw, dh = (int(paperW * scaleThresh * 2), int(paperH * scaleThresh * 2))
 	minWH = np.min((w, h))
 	originalImg = cv2.resize(originalImg, (w, h))
@@ -460,8 +531,8 @@ def houghTestCircle(originalImg, paperW, paperH, blockList = None, scaleThresh =
 	# 调试，轮廓
 	img = cv2.Canny(img, 15, 60, apertureSize = 3)
 	# 确定四个边角圆
-	# skewScale: 边界框四个角畸变值
-	corners, correctCircles, skewScale = determingCorrectCircles(circles[0], paperW, paperH)
+	# skewScale: 边界框四个角畸变值, 减去即可矫正畸变
+	corners, correctCircles, skewScale = determingCorrectCircles(circles[0], papersw / papersh)
 	corners = np.array(corners, dtype = np.float32)
 	# 未过滤的圆
 	print "circles: ", circles
@@ -479,19 +550,20 @@ def houghTestCircle(originalImg, paperW, paperH, blockList = None, scaleThresh =
 			cv2.circle(imgColor02,(i[0],i[1]),i[2],(0,255,0),2)
 			cv2.circle(imgColor02,(i[0],i[1]),2,(0,0,255),3)
 	# 画出过滤后的圆
+	blockListImg = []
 	if correctCircles:
 		# 调试：画圆
-		correctCircles = np.uint16(np.around(correctCircles))
-		for i in correctCircles:
+		correctCirclesUint = np.uint16(np.around(correctCircles))
+		for i in correctCirclesUint:
 			cv2.circle(imgColor,(i[0],i[1]),i[2],(0,255,0),2)
 			cv2.circle(imgColor,(i[0],i[1]),2,(0,0,255),3)
 		# 映射，切割
 		transPs = np.array([[0, 0], [dw, 0], [dw, dh], [0, dh]], dtype = np.float32)
 		transform = cv2.getPerspectiveTransform(corners, transPs)
 		splitArea = cv2.warpPerspective(src = originalImg, M = transform, dsize =  (dw, dh))
+		blockListImg.append(splitArea)
 	# 调试:切割目标区域
-	blockListImg = []
-	if blockList:
+	if blockList and correctCircles:
 		for blockCorner in blockList:
 			# 待切割区域对角点
 			topLeftX, topLeftY, bottomRightX, bottomRightY = np.array(blockCorner) * np.array([dw, dh, dw, dh])
@@ -517,7 +589,7 @@ def houghTestCircle(originalImg, paperW, paperH, blockList = None, scaleThresh =
 			splitAreaTmpSkew = cv2.warpPerspective(src = splitArea, M = transformSkew, dsize =  (tmpW, tmpH))
 
 			blockListImg.extend([splitAreaTmp, splitAreaTmpSkew])
-	showImg(img, imgColor02, imgColor, splitArea, *blockListImg)
+	showImg(img, imgColor02, imgColor, *blockListImg)
 	return
 
 # main function
