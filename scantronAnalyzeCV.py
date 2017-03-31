@@ -366,6 +366,24 @@ def getSlideWindow(arr, windowIndex, unitSize):
 		leftCount = unitSize - (len(arr) - windowIndex);
 		windowArr.extend(arr[0: leftCount])
 		return windowArr
+# 畸变矫正幅度
+def getSkewScale(topLeft, topRight, bottomRight, bottomLeft):
+	topAvg = 0.5 * (topLeft[1] + topRight[1])
+	bottomAvg = 0.5 * (bottomLeft[1] + bottomRight[1])
+	leftAvg = 0.5 * (topLeft[0] + bottomLeft[0])
+	rightAvg = 0.5 * (topRight[0] + bottomRight[0])
+	# 四个点畸变值, 左上，右上，右下，左下
+	# return [[topLeft[0] - leftAvg, topLeft[1] - topAvg], [topRight[0] - rightAvg, topRight[1] - topAvg], [bottomRight[0] - rightAvg, bottomRight[1] - bottomAvg], [bottomLeft[0] - leftAvg, bottomLeft[1] - bottomAvg]]
+	# 只保留上方畸变值
+	# return [[0, topLeft[1] - topAvg], [0, topRight[1] - topAvg], [0, topRight[1] - topAvg], [0, topLeft[1] - topAvg]]
+	# 只保留平均畸变值
+	A = ((topLeft[0] - leftAvg) + (topRight[0] - rightAvg)) / 2.0
+	B = ((bottomRight[0] - rightAvg) + (bottomLeft[0] - leftAvg)) / 2.0
+	C = ((topLeft[1] - topAvg) + (bottomLeft[1] - bottomAvg)) / 2.0
+	D = ((topRight[1] - topAvg) + (bottomRight[1] - bottomAvg)) / 2.0
+	# 取消X方向畸变, 针对图像内凹或外凸的情况, 平整图像不需要取消X方向畸变
+	A = B = 0
+	return [[A, C], [A, D], [B, D], [B, C]]
 
 def determineBoxRatio(c1, c2, c3, c4, w, h, thresh = 0.1):
 	w = float(w)
@@ -402,9 +420,9 @@ def determineBoxRatio(c1, c2, c3, c4, w, h, thresh = 0.1):
 	ratio1 = w1 / h1
 	ratio2 = w2 / h2
 	if (ratio1 >= staRatio - thresh and ratio1 <= staRatio + thresh) and (ratio2 >= staRatio - thresh and ratio2 <= staRatio + thresh):
-		return True, (topLeft, topRight, bottomRight, bottomLeft)
+		return True, (topLeft, topRight, bottomRight, bottomLeft), getSkewScale(topLeft, topRight, bottomRight, bottomLeft)
 	else:
-		return False, ()
+		return False, (), []
 
 def determingCorrectCircles(circles, w, h):
 	if len(circles) < 4:
@@ -415,19 +433,18 @@ def determingCorrectCircles(circles, w, h):
 		c1 = currentCircle
 		for windowIndex in range(len(leftCircles)):
 			c2, c3, c4 = getSlideWindow(leftCircles, windowIndex, 3)
-			result, corners = determineBoxRatio((c1[0], c1[1]), (c2[0], c2[1]), (c3[0], c3[1]), (c4[0], c4[1]), w, h)
+			result, corners, skewScale = determineBoxRatio((c1[0], c1[1]), (c2[0], c2[1]), (c3[0], c3[1]), (c4[0], c4[1]), w, h)
 			if result:
-				return corners, (c1, c2, c3, c4)
-	return [], ()
-	
-# main function, paperW,paperH: 目标区域宽高
-def houghTestCircle(originalImg, paperW, paperH):
-	scaleThresh = 0.3
+				return corners, (c1, c2, c3, c4), skewScale
+	return [], (), []
+
+# main function, paperW,paperH: 目标区域宽高, blockList = [(0.3,0.3,0.5,0.5), ]左上右下
+def houghTestCircle(originalImg, paperW, paperH, blockList = None, scaleThresh = 0.3):
 	imgSize = getImgSize(originalImg)
 	w, h = imgSize
 	# 按比例缩放
 	w, h = (np.int(w * scaleThresh), np.int(h * scaleThresh))
-	dw, dh = (int(paperW * scaleThresh), int(paperH * scaleThresh))
+	dw, dh = (int(paperW * scaleThresh * 2), int(paperH * scaleThresh * 2))
 	minWH = np.min((w, h))
 	originalImg = cv2.resize(originalImg, (w, h))
 
@@ -436,14 +453,15 @@ def houghTestCircle(originalImg, paperW, paperH):
 	imgColor = originalImg.copy()
 	# 调试， 画圆
 	imgColor02 = originalImg.copy()
-	# 调试，切割结果
-	wimg3 = createWhiteImg((dw, dh))
+	# 切割结果
+	splitArea = np.array([])
 
 	circles = cv2.HoughCircles(img, cv2.HOUGH_GRADIENT, 1, minWH * 0.3, param1 = 60, param2 = 15, minRadius = 1, maxRadius = 20)
 	# 调试，轮廓
 	img = cv2.Canny(img, 15, 60, apertureSize = 3)
 	# 确定四个边角圆
-	corners, correctCircles = determingCorrectCircles(circles[0], paperW, paperH)
+	# skewScale: 边界框四个角畸变值
+	corners, correctCircles, skewScale = determingCorrectCircles(circles[0], paperW, paperH)
 	corners = np.array(corners, dtype = np.float32)
 	# 未过滤的圆
 	print "circles: ", circles
@@ -451,6 +469,8 @@ def houghTestCircle(originalImg, paperW, paperH):
 	print "correctCircles: ", correctCircles
 	# 过滤后的圆的圆心
 	print "corners: ", corners
+	# 畸变值
+	print "skew: ", skewScale
 	# 画出过滤前的圆
 	if circles.any():
 		# 调试：画圆
@@ -468,8 +488,36 @@ def houghTestCircle(originalImg, paperW, paperH):
 		# 映射，切割
 		transPs = np.array([[0, 0], [dw, 0], [dw, dh], [0, dh]], dtype = np.float32)
 		transform = cv2.getPerspectiveTransform(corners, transPs)
-		wimg3 = cv2.warpPerspective(src = originalImg, M = transform, dsize =  (dw, dh))
-	showImg(img, imgColor02, imgColor, wimg3)
+		splitArea = cv2.warpPerspective(src = originalImg, M = transform, dsize =  (dw, dh))
+	# 调试:切割目标区域
+	blockListImg = []
+	if blockList:
+		for blockCorner in blockList:
+			# 待切割区域对角点
+			topLeftX, topLeftY, bottomRightX, bottomRightY = np.array(blockCorner) * np.array([dw, dh, dw, dh])
+			# 待切割区域宽高
+			tmpW = int(bottomRightX - topLeftX)
+			tmpH = int(bottomRightY - topLeftY)
+			# 待切割区域四个边角, 不抵消畸变
+			fourPoints = np.array([[topLeftX, topLeftY], [bottomRightX, topLeftY], [bottomRightX, bottomRightY], [topLeftX, bottomRightY]])
+			# 待切割区域四个边角，抵消畸变
+			# 左上，右上，右下，左下
+			fourPointsAntiSkew = np.array([[topLeftX, topLeftY], [bottomRightX, topLeftY], [bottomRightX, bottomRightY], [topLeftX, bottomRightY]]) - np.array(skewScale)
+			
+			# 结果图像四个边角
+			transPsTmp = np.array([[0, 0], [tmpW, 0], [tmpW, tmpH], [0,tmpH]], dtype = np.float32)
+
+			cornersTmp = np.array(fourPoints, dtype = np.float32)
+			cornersTmpSkew = np.array(fourPointsAntiSkew, dtype = np.float32)
+			
+			transform = cv2.getPerspectiveTransform(cornersTmp, transPsTmp)
+			splitAreaTmp = cv2.warpPerspective(src = splitArea, M = transform, dsize =  (tmpW, tmpH))
+
+			transformSkew = cv2.getPerspectiveTransform(cornersTmpSkew, transPsTmp)
+			splitAreaTmpSkew = cv2.warpPerspective(src = splitArea, M = transformSkew, dsize =  (tmpW, tmpH))
+
+			blockListImg.extend([splitAreaTmp, splitAreaTmpSkew])
+	showImg(img, imgColor02, imgColor, splitArea, *blockListImg)
 	return
 
 # main function
