@@ -461,7 +461,7 @@ def determineBoxRatio(c1, c2, c3, c4, whRatio, thresh = 0.1):
 
 def determingCorrectCircles(circles, whRatio):
 	if len(circles) < 4:
-		return []
+		return [], (), []
 	# for currentCircleIndex, currentCircle in enumerate(circles):
 	# 	leftCircles = circles[range(currentCircleIndex + 1, len(circles))].tolist();
 	# 	leftCircles.extend(circles[range(0, currentCircleIndex)])
@@ -513,7 +513,6 @@ def houghTestCircle(originalImg, paperW, paperH, blockList = None, scaleThresh =
 	w, h = imgSize
 	# 按比例缩放
 	w, h = (np.int(w * scaleThresh), np.int(h * scaleThresh))
-	papersw, papersh = (np.float(paperW * scaleThresh), np.float(paperH * scaleThresh))# (w * paperW, h * paperH)
 	# 调试
 	dw, dh = (int(paperW * scaleThresh * 2), int(paperH * scaleThresh * 2))
 	minWH = np.min((w, h))
@@ -527,12 +526,15 @@ def houghTestCircle(originalImg, paperW, paperH, blockList = None, scaleThresh =
 	# 切割结果
 	splitArea = np.array([])
 
-	circles = cv2.HoughCircles(img, cv2.HOUGH_GRADIENT, 1, minWH * 0.3, param1 = 60, param2 = 15, minRadius = 1, maxRadius = 20)
+	circles = cv2.HoughCircles(img, cv2.HOUGH_GRADIENT, 1, minWH * 0.1, param1 = 60, param2 = 20, minRadius = int(np.ceil(3 * scaleThresh)), maxRadius = int(50 * scaleThresh))
+	# 只取半径大于平均值的圆
+	avgRadius = np.average(circles[0, :, 2]) * 0.9
+	circles = np.array([circles[0, circles[0, :, 2] >= avgRadius]])
 	# 调试，轮廓
 	img = cv2.Canny(img, 15, 60, apertureSize = 3)
 	# 确定四个边角圆
 	# skewScale: 边界框四个角畸变值, 减去即可矫正畸变
-	corners, correctCircles, skewScale = determingCorrectCircles(circles[0], papersw / papersh)
+	corners, correctCircles, skewScale = determingCorrectCircles(circles[0], float(paperW) / paperH)
 	corners = np.array(corners, dtype = np.float32)
 	# 未过滤的圆
 	print "circles: ", circles
