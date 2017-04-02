@@ -366,6 +366,7 @@ def getSlideWindow(arr, windowIndex, unitSize):
 		leftCount = unitSize - (len(arr) - windowIndex);
 		windowArr.extend(arr[0: leftCount])
 		return windowArr
+
 # 畸变矫正幅度
 def getSkewScale(topLeft, topRight, bottomRight, bottomLeft):
 	topAvg = 0.5 * (topLeft[1] + topRight[1])
@@ -385,7 +386,7 @@ def getSkewScale(topLeft, topRight, bottomRight, bottomLeft):
 	A = B = 0
 	return [[A, C], [A, D], [B, D], [B, C]]
 
-def determineBoxRatio(c1, c2, c3, c4, whRatio, thresh = 0.1):
+def determineBoxRatio(c1, c2, c3, c4, whRatio, thresh = 0.2):
 	# c1 = np.array(c1)
 	# c2 = np.array(c2)
 	# c3 = np.array(c3)
@@ -417,12 +418,12 @@ def determineBoxRatio(c1, c2, c3, c4, whRatio, thresh = 0.1):
 	bottomRight = np.array([c3[0], c3[1]])
 	bottomLeft = np.array([c4[0], c4[1]])
 	# 上下，左右，宽高
-	w1 = np.sqrt(np.sum((topRight - topLeft) * (topRight - topLeft)))
-	w2 = np.sqrt(np.sum((bottomRight - bottomLeft) * (bottomRight - bottomLeft)))
-	h1 = np.sqrt(np.sum((bottomLeft - topLeft) * (bottomLeft - topLeft)))
-	h2 = np.sqrt(np.sum((bottomRight - topRight) * (bottomRight - topRight)))
+	w1 = np.sum((topRight - topLeft) * (topRight - topLeft))
+	w2 = np.sum((bottomRight - bottomLeft) * (bottomRight - bottomLeft))
+	h1 = np.sum((bottomLeft - topLeft) * (bottomLeft - topLeft))
+	h2 = np.sum((bottomRight - topRight) * (bottomRight - topRight))
 	# 宽高比
-	staRatio = whRatio
+	staRatio = whRatio * whRatio
 	ratio1 = w1 / h1
 	ratio2 = w2 / h2
 	ratio3 = w1 / h2
@@ -438,26 +439,31 @@ def determineBoxRatio(c1, c2, c3, c4, whRatio, thresh = 0.1):
 	# 对角线相对长度
 	diagLengthRatio = diagLength1 / diagLength2
 	diagLengthRatioBool = (diagLengthRatio >= 1 - thresh) and (diagLengthRatio <= 1 + thresh)
+	# 半径方差
+	radiusArr = np.array((c1[2], c2[2], c3[2], c4[2]))
+	radiusVar = np.sum(np.power(radiusArr - np.array([np.average(radiusArr)] * 4), 2))
 
-	if diagLengthRatioBool:
-		print c1,c2,c3,c4
-		print "   topLeft,    topRight: ", [topLeft.tolist(), topRight.tolist()]
-		print "bottomLeft, bottomRight: ", [bottomLeft.tolist(), bottomRight.tolist()]
-		print "w1, w2: ", [w1, w2]
-		print "h1, h2: ", [h1, h2]
-		print "staRatio: ", staRatio
-		print "ratio1(w1/h1), ratio2(w2/h2), ratio3(w1/h2), ratio4(w2/h1): ", [ratio1, ratio2, ratio3, ratio4]
-		print "ratioBool: ", whRatioBool
-		# print "diagLength: ", diagLength
-		print "diagLength1, diagLength2, diagLengthRatio", [diagLength1, diagLength2, diagLengthRatio]
-		print "diagLengthRatioBool: ", diagLengthRatioBool
-		print "----------"
+	# if diagLengthRatioBool or True:
+	# 	print c1,c2,c3,c4
+	# 	print "   topLeft,    topRight: ", [topLeft.tolist(), topRight.tolist()]
+	# 	print "bottomLeft, bottomRight: ", [bottomLeft.tolist(), bottomRight.tolist()]
+	# 	print "w1, w2: ", [w1, w2]
+	# 	print "h1, h2: ", [h1, h2]
+	# 	print "staRatio: ", staRatio
+	# 	print "ratio1(w1/h1), ratio2(w2/h2), ratio3(w1/h2), ratio4(w2/h1): ", [ratio1, ratio2, ratio3, ratio4]
+	# 	print "ratioBool: ", whRatioBool
+	# 	# print "diagLength: ", diagLength
+	# 	print "diagLength1, diagLength2, diagLengthRatio", [diagLength1, diagLength2, diagLengthRatio]
+	# 	print "diagLengthRatioBool: ", diagLengthRatioBool
+	# 	print "----------"
 
 	# 宽高比与对角线长度
 	if whRatioBool and diagLengthRatioBool:
-		return True, (topLeft, topRight, bottomRight, bottomLeft), getSkewScale(topLeft, topRight, bottomRight, bottomLeft)
+		# 差异度
+		difference = np.abs(diagLengthRatio - thresh) + radiusVar
+		return True, (topLeft, topRight, bottomRight, bottomLeft), getSkewScale(topLeft, topRight, bottomRight, bottomLeft), difference
 	else:
-		return False, (), []
+		return False, (), [], float('inf')
 
 def determingCorrectCircles(circles, whRatio):
 	if len(circles) < 4:
@@ -497,13 +503,22 @@ def determingCorrectCircles(circles, whRatio):
 	# print topRightCircles
 	# print bottomRightCircles
 	# print bottomLeftCircles
+	correctResult = []
 	for circleTopLeft in topLeftCircles:
 		for circleTopRight in topRightCircles:
 			for circleBottomRight in bottomRightCircles:
 				for circleBottomLeft in bottomLeftCircles:
-					result, corners, skewScale = determineBoxRatio(circleTopLeft, circleTopRight, circleBottomRight, circleBottomLeft, whRatio)
+					result, corners, skewScale, difference = determineBoxRatio(circleTopLeft, circleTopRight, circleBottomRight, circleBottomLeft, whRatio)
 					if result:
-						return corners, (circleTopLeft, circleTopRight, circleBottomRight, circleBottomLeft), skewScale
+						correctResult.append({"diff": difference, "corners": corners, "skewScale": skewScale, \
+							"circleTopLeft": circleTopLeft, "circleTopRight": circleTopRight, "circleBottomRight": circleBottomRight, \
+							"circleBottomLeft": circleBottomLeft})
+	#print correctResult
+	if correctResult:
+		# 选取差异度最小的candidate
+		correctResult = sorted(correctResult, key = lambda a: a["diff"])
+		minDiffResult = correctResult[0]
+		return minDiffResult["corners"], (minDiffResult["circleTopLeft"], minDiffResult["circleTopRight"], minDiffResult["circleBottomRight"], minDiffResult["circleBottomLeft"]), minDiffResult["skewScale"]
 	return [], (), []
 
 
@@ -526,7 +541,7 @@ def houghTestCircle(originalImg, paperW, paperH, blockList = None, scaleThresh =
 	# 切割结果
 	splitArea = np.array([])
 
-	circles = cv2.HoughCircles(img, cv2.HOUGH_GRADIENT, 1, minWH * 0.1, param1 = 60, param2 = 20, minRadius = int(np.ceil(3 * scaleThresh)), maxRadius = int(50 * scaleThresh))
+	circles = cv2.HoughCircles(img, cv2.HOUGH_GRADIENT, 1, minWH * 0.08, param1 = 60, param2 = 20, minRadius = int(np.ceil(3 * scaleThresh)), maxRadius = int(50 * scaleThresh))
 	# 只取半径大于平均值的圆
 	avgRadius = np.average(circles[0, :, 2]) * 0.9
 	circles = np.array([circles[0, circles[0, :, 2] >= avgRadius]])
@@ -538,6 +553,8 @@ def houghTestCircle(originalImg, paperW, paperH, blockList = None, scaleThresh =
 	corners = np.array(corners, dtype = np.float32)
 	# 未过滤的圆
 	print "circles: ", circles
+	# 半径平均值
+	print "avgRadius: ", avgRadius
 	# 过滤后的圆
 	print "correctCircles: ", correctCircles
 	# 过滤后的圆的圆心
@@ -576,7 +593,7 @@ def houghTestCircle(originalImg, paperW, paperH, blockList = None, scaleThresh =
 			fourPoints = np.array([[topLeftX, topLeftY], [bottomRightX, topLeftY], [bottomRightX, bottomRightY], [topLeftX, bottomRightY]])
 			# 待切割区域四个边角，抵消畸变
 			# 左上，右上，右下，左下
-			fourPointsAntiSkew = np.array([[topLeftX, topLeftY], [bottomRightX, topLeftY], [bottomRightX, bottomRightY], [topLeftX, bottomRightY]]) - np.array(skewScale)
+			fourPointsAntiSkew = np.array([[topLeftX, topLeftY], [bottomRightX, topLeftY], [bottomRightX, bottomRightY], [topLeftX, bottomRightY]]) #- np.array(skewScale)
 			
 			# 结果图像四个边角
 			transPsTmp = np.array([[0, 0], [tmpW, 0], [tmpW, tmpH], [0,tmpH]], dtype = np.float32)
@@ -873,6 +890,57 @@ def readCard(img):
 	# 调试:画出轮廓
 	showImg(whiteImg00, rectImg01, whiteImg)	
 	# showImg(whiteImg)	
+	return ansMap.T
+
+# main function
+def readCard02(img, details = [], mode = "noise"):
+	if "area" not in details or not details["area"]:
+		area = None 
+	else:
+		area = details["area"]
+	groupCount = 1 #details["groupCount"]
+	questionCount = 5 #details["questionCount"]
+	answerCount = 5 #details["answerCount"]
+	# 灰度图
+	img = grayImg(img)
+	w, h = img.shape
+	# otsu二值化
+	img = binaryInv(img)
+	# 低通滤波
+	if mode == "noise":
+		img = cv2.blur(img, (3, 3))
+	# 腐蚀, 实际效果为涂抹填涂区域
+	# img = erosion(img)
+	# 膨胀， 实际效果为缩小填涂区域
+	if mode == "noise":
+		img = dilation(img, iterations = 1)
+	# 裁剪
+	if area:
+		rectImg01 = img[area[0]: area[1], area[2]: area[3]]
+	else:
+		rectImg01 = img
+	# 白边框，防止贴近边缘的填涂区域被并入外围边框中
+	row, col = rectImg01.shape
+	rectImg01[0] = 255
+	rectImg01[row - 1] = 255
+	rectImg01[:, col - 1] = 255
+	rectImg01[:, 0] = 255
+	# 调试:寻找并在白色底图上画出轮廓
+	whiteImg = createWhiteImg((col, row))
+	# 找出轮廓
+	contours, hierarchy = findContours(rectImg01, cv2.RETR_TREE)
+	# 调试:画出轮廓
+	drawContours(whiteImg, contours, (0, 0, 0), 2)
+	# 得到填涂答案
+	boundingBox = getBoundingRect(contours)
+	ansBoxCenter, topBoundingBox = findAnswerBoxCenter(boundingBox, hierarchy)
+	# 单个题组
+	# ansMap = determineAnswer(ansBoxCenter, 5, 4, topBoundingBox[2] - topBoundingBox[0], topBoundingBox[3] - topBoundingBox[1])
+	# 四个题组
+	ansMap = determineAnswerBar(ansBoxCenter, questionCount, answerCount, groupCount, topBoundingBox[2] - topBoundingBox[0], topBoundingBox[3] - topBoundingBox[1]
+		, restrictArea = True, restrictAreaThresh = 0.02)
+	# 调试:画出轮廓
+	showImg(rectImg01, whiteImg)	
 	return ansMap.T
 
 if __name__ == "__main__":
