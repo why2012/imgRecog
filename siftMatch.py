@@ -38,8 +38,8 @@ def explore_match(win, img1, img2, kp_pairs, status = None, H = None):
 	for (x1, y1), (x2, y2), inlier in zip(p1, p2, status):  
 		if inlier:  
 			col = green  
-			cv2.circle(vis, (x1, y1), 2, col, -1)  
-			cv2.circle(vis, (x2, y2), 2, col, -1)  
+			cv2.circle(vis, (x1, y1), 3, col, -1)  
+			cv2.circle(vis, (x2, y2), 3, col, -1)  
 		else:  
 			col = red  
 			r = 2  
@@ -62,7 +62,7 @@ def explore_match(win, img1, img2, kp_pairs, status = None, H = None):
 # imgDest2 = cv2.imread("pics/IMG_1205_SRC2.JPG")
 # imgDest3 = cv2.imread("pics/IMG_1205_SRC3.JPG") 
 # matchResult=[];reload(siftM);siftM.siftTest(imgFeature, imgDest, matchResult)
-def siftTest(imgFeature, imgDest, matchResult = []):
+def siftTest(imgFeature, imgDest, matchResult = [], drawBoundingBox = True):
 	imgFeatureGray = cv2.cvtColor(imgFeature, cv2.COLOR_BGR2GRAY)
 	imgDestGray = cv2.cvtColor(imgDest, cv2.COLOR_BGR2GRAY)
 	if not matchResult:
@@ -81,6 +81,14 @@ def siftTest(imgFeature, imgDest, matchResult = []):
 	p1, p2, kpPairs = filter_matches(kpsFeatureImg, kpsDestImg, matches, ratio = 0.5) # ratio = 0.5
 	print "MatchResult: ", len(kpPairs)
 	if kpPairs:
+		if drawBoundingBox:
+			M, mask = cv2.findHomography(p1, p2, cv2.RANSAC, 5.0)
+			imgFeatureH, imgFeatureW = imgFeatureGray.shape
+			pts = np.float32([[0, 0], [imgFeatureW - 1, 0], [imgFeatureW - 1, imgFeatureH - 1], [0, imgFeatureH - 1]])
+			pts = pts.reshape(-1, 1, 2);
+			dst = cv2.perspectiveTransform(pts, M)
+			imgBoundingBox = cv2.polylines(imgDest.copy(), [np.int32(dst)], True, (0, 255, 0), 3, cv2.LINE_AA)
+			cv2.imshow("bounding", imgBoundingBox)
 		explore_match('matches', imgFeatureGray, imgDestGray, kpPairs) 
 
 
